@@ -1,0 +1,1 @@
+"""Ingestion: collect -> secret scan -> clean -> chunk -> embed."""
