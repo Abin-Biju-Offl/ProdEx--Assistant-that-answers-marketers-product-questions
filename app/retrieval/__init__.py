@@ -1,0 +1,1 @@
+"""Retrieval: embeddings, hybrid search, RRF, reranking, filters."""
