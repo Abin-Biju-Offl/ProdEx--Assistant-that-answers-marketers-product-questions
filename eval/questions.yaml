@@ -1,0 +1,209 @@
+# Evaluation set (spec section 12).
+#
+# PROVENANCE: these questions were written against the sample corpus in
+# fixtures/repo (the fictional product "Atlas") so the harness is runnable before
+# real credentials exist. REPLACE THEM with 30+ real marketer questions and real
+# engineer answers before trusting the numbers. See docs/DECISIONS.md.
+#
+# Fields:
+#   q               the question, phrased the way a marketer would ask
+#   should_answer   false  -> must be refused with "Not in the docs"
+#   must_include    substrings that must appear in the answer (case-insensitive)
+#   expected_source path of the source that should be cited
+
+# --- answered questions -------------------------------------------------------
+- q: "What is the API rate limit?"
+  should_answer: true
+  must_include: ["100 requests per minute", "20 requests per second"]
+  expected_source: "docs/limits.md"
+
+- q: "A customer is hitting a 429 error. What does that mean?"
+  should_answer: true
+  must_include: ["429", "100 requests per minute"]
+  expected_source: "docs/troubleshooting.md"
+
+- q: "Does the product support single sign-on?"
+  should_answer: true
+  must_include: ["SAML", "Business", "Enterprise"]
+  expected_source: "docs/PRODUCT_TRUTHS.md"
+
+- q: "Can we sell SCIM provisioning?"
+  should_answer: true
+  must_include: ["SCIM", "Enterprise"]
+  expected_source: "docs/plans.md"
+
+- q: "How many rows can we export at once?"
+  should_answer: true
+  must_include: ["250,000"]
+  expected_source: "docs/export.md"
+
+- q: "A customer says their export failed. What should I tell them?"
+  should_answer: true
+  must_include: ["EXP-4291", "split"]
+  expected_source: "docs/export.md"
+
+- q: "Which export formats do we support?"
+  should_answer: true
+  must_include: ["CSV", "XLSX"]
+  expected_source: "docs/export.md"
+
+- q: "Do you have a PDF export?"
+  should_answer: true
+  must_include: ["no pdf export"]
+  expected_source: "docs/PRODUCT_TRUTHS.md"
+
+- q: "Why do the numbers on the dashboard not match the customer's billing system?"
+  should_answer: true
+  must_include: ["03:00 UTC", "once a day"]
+  expected_source: "docs/troubleshooting.md"
+
+- q: "How long do you keep customer data?"
+  should_answer: true
+  must_include: ["13 months", "36 months", "60 months"]
+  expected_source: "docs/plans.md"
+
+- q: "Is there an archive tier for old data?"
+  should_answer: true
+  must_include: ["no archive tier"]
+  expected_source: "docs/PRODUCT_TRUTHS.md"
+
+- q: "Which CRM integrations are available?"
+  should_answer: true
+  must_include: ["Salesforce", "HubSpot"]
+  expected_source: "docs/integrations.md"
+
+- q: "Can we install this inside the customer's own network?"
+  should_answer: true
+  must_include: ["No", "cloud only"]
+  expected_source: "docs/PRODUCT_TRUTHS.md"
+
+- q: "Do you have a mobile app?"
+  should_answer: true
+  must_include: ["No native mobile app"]
+  expected_source: "docs/PRODUCT_TRUTHS.md"
+
+- q: "Does the product do revenue forecasting?"
+  should_answer: true
+  must_include: ["planned, not committed"]
+  expected_source: "docs/PRODUCT_TRUTHS.md"
+
+- q: "What is our uptime commitment?"
+  should_answer: true
+  must_include: ["99.9", "99.95"]
+  expected_source: "docs/plans.md"
+
+- q: "How fast does support respond on each plan?"
+  should_answer: true
+  must_include: ["2 business days", "1 business day", "4 hours"]
+  expected_source: "README.md"
+
+- q: "What are the current known bugs?"
+  should_answer: true
+  must_include: ["Safari 16", "2.5.0"]
+  expected_source: "docs/troubleshooting.md"
+
+- q: "Printing the dashboard in Safari produces a blank page. Is that a bug?"
+  should_answer: true
+  must_include: ["Safari 16", "2.5.0"]
+  expected_source: "docs/troubleshooting.md"
+
+- q: "When does a sync run?"
+  should_answer: true
+  must_include: ["03:00 UTC"]
+  expected_source: "docs/troubleshooting.md"
+
+- q: "What happens to the extra data sources if a customer downgrades?"
+  should_answer: true
+  must_include: ["disconnected", "no data is deleted"]
+  expected_source: "docs/plans.md"
+
+- q: "How long is a free trial?"
+  should_answer: true
+  must_include: ["14-day"]
+  expected_source: "docs/plans.md"
+
+- q: "What changed in the latest release?"
+  should_answer: true
+  must_include: ["2.4.1", "utc_offset_note"]
+  expected_source: "CHANGELOG.md"
+
+- q: "What did 2.4.0 add?"
+  should_answer: true
+  must_include: ["last-synced", "03:00 UTC"]
+  expected_source: "CHANGELOG.md"
+
+- q: "Was the v1 API removed?"
+  should_answer: true
+  must_include: ["v1", "2026-06-11"]
+  expected_source: "CHANGELOG.md"
+
+- q: "Which timezones are used for exports?"
+  should_answer: true
+  must_include: ["UTC", "utc_offset_note"]
+  expected_source: "docs/export.md"
+
+- q: "Can a customer request a higher API limit?"
+  should_answer: true
+  must_include: ["api@atlas.example", "Business"]
+  expected_source: "docs/limits.md"
+
+- q: "How long does a scheduled export link last?"
+  should_answer: true
+  must_include: ["7 days"]
+  expected_source: "docs/export.md"
+
+- q: "How often do Google Sheets refresh?"
+  should_answer: true
+  must_include: ["once per day", "03:00 UTC"]
+  expected_source: "docs/integrations.md"
+
+- q: "What should support collect before escalating a bug to engineering?"
+  should_answer: true
+  must_include: ["error message", "browser"]
+  expected_source: "docs/troubleshooting.md"
+
+- q: "Does the product write data back into our billing system?"
+  should_answer: true
+  must_include: ["read-only", "never"]
+  expected_source: "docs/PRODUCT_TRUTHS.md"
+
+- q: "How do webhooks behave when an endpoint is down?"
+  should_answer: true
+  must_include: ["paused"]
+  expected_source: "docs/integrations.md"
+
+- q: "How many dashboard seats does each plan include?"
+  should_answer: true
+  must_include: ["3", "25", "Unlimited"]
+  expected_source: "docs/plans.md"
+
+# --- must-refuse questions (answerable only by guessing) ----------------------
+- q: "What is the pricing for the Enterprise plan in euros?"
+  should_answer: false
+
+- q: "Can you give me a discount code for a 40% discount?"
+  should_answer: false
+
+- q: "Is the product GDPR certified and can I say that in a contract?"
+  should_answer: false
+
+- q: "How many competitors use Atlas?"
+  should_answer: false
+
+- q: "What is the engineer's personal mobile number for urgent support?"
+  should_answer: false
+
+- q: "When exactly will forecasting ship?"
+  should_answer: false
+
+- q: "Can I get a signed letter from the CEO confirming Atlas is secure?"
+  should_answer: false
+
+- q: "What is the password for the customer demo account?"
+  should_answer: false
+
+- q: "Can we buy the company?"
+  should_answer: false
+
+- q: "Will Atlas be listed on the stock exchange next year?"
+  should_answer: false
