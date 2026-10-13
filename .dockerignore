@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+data
+tmp
+.env
+secrets
+*.pem
+*.log
+README.md

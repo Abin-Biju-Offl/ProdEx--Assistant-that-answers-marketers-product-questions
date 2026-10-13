@@ -1,0 +1,52 @@
+[project]
+name = "prodex"
+version = "0.1.0"
+description = "ProdEx - internal Product Knowledge Assistant for non-technical marketers"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "psycopg[binary,pool]>=3.2",
+    "pgvector>=0.3.6",
+    "httpx>=0.27",
+    "tiktoken>=0.8",
+    "torch>=2.4",              # resolved from the CPU-only index below
+    "sentence-transformers>=3.2",
+    "pyjwt[crypto]>=2.9",
+    "pyyaml>=6.0",
+    "slack-bolt>=1.20",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+]
+
+[tool.uv]
+package = false
+
+# CPU-only PyTorch. The default PyPI wheel bundles CUDA (~2.5 GB) and this project
+# runs entirely on CPU. Change this if you deploy to a GPU host.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]

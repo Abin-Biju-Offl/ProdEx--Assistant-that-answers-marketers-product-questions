@@ -1,0 +1,118 @@
+name: prodex
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: prodex
+      POSTGRES_PASSWORD: prodex
+      POSTGRES_DB: prodex
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prodex -d prodex"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  # Pulls the LLM once so that `docker compose up` is enough on a cold machine.
+  model-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b-instruct}
+    entrypoint: ["sh", "-c", "ollama pull \"$$LLM_MODEL\""]
+    restart: "no"
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://prodex:prodex@db:5432/prodex
+      HF_HOME: /models
+      LLM_BASE_URL: http://ollama:11434/v1
+      GITHUB_SOURCE: ${GITHUB_SOURCE:-mock}
+    volumes:
+      - modelcache:/models
+      - ./secrets:/app/secrets:ro
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # Slack bot (Socket Mode, no public URL needed). Start with:
+  #   docker compose --profile slack up -d slack
+  slack:
+    build: .
+    profiles: [slack]
+    depends_on:
+      api:
+        condition: service_started
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://prodex:prodex@db:5432/prodex
+      HF_HOME: /models
+      API_BASE_URL: http://api:8000
+    volumes:
+      - modelcache:/models
+      - ./secrets:/app/secrets:ro
+    restart: unless-stopped
+
+  # One-shot jobs share the api image, e.g.
+  #   docker compose run --rm api python -m app.ingestion.pipeline
+  #   docker compose run --rm api python eval/run_eval.py
+  #   docker compose run --rm api pytest -q
+
+  metabase:
+    image: metabase/metabase:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: prodex
+      MB_DB_HOST: db
+      MB_DB_PORT: 5432
+      MB_DB_USER: metabase_ro
+      MB_DB_PASS: ${METABASE_DB_PASSWORD:-change_me}
+    ports:
+      - "${METABASE_PORT:-3000}:3000"
+    volumes:
+      - metabase_data:/home/metabase/data
+    profiles: [dashboard]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  ollama:
+  modelcache:
+  metabase_data:
