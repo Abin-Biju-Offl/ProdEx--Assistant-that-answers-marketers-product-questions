@@ -1,0 +1,1 @@
+"""ProdEx: internal Product Knowledge Assistant."""
