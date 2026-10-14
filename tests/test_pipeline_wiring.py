@@ -137,7 +137,7 @@ def test_a_cited_answer_is_returned_and_logged(stub_env):
     assert row["chunk_ids"] == [1]
     assert "100 requests per minute" in row["answer"]
 
-    passages = llm.calls[0][1]["content"]
+    passages = llm.calls[0][-1]["content"]  # last user turn is the real question
     assert "[1] SOURCE: acme/atlas > docs/limits.md > The numbers" in passages
 
 
@@ -182,6 +182,36 @@ def test_an_empty_access_level_list_fails_closed(stub_env):
     assert llm.calls == []
 
 
+def test_a_cached_answer_is_served_without_calling_the_model(stub_env, monkeypatch):
+    """A cache hit must return the stored answer, log it, and never call the LLM."""
+    from app.logging_ import store
+
+    cached_payload = {
+        "answered": True,
+        "answer": "Atlas allows 100 requests per minute per workspace [1].",
+        "sources": [{"n": 1, "title": "acme/atlas > docs/limits.md", "url": "https://u",
+                     "updated_at": "2026-10-12"}],
+        "confidence": 0.91,
+        "docs_as_of": "2026-10-12",
+        "owner_hint": None,
+        "chunk_ids": [1],
+    }
+    monkeypatch.setattr(store, "cache_get", lambda key: dict(cached_payload))
+
+    llm = _StubLLM("should never run [1].")
+    response = answer_question(
+        AskRequest(question="What is the API rate limit?", slack_user_id="U-CACHE"), llm=llm
+    )
+
+    assert response.answered is True
+    assert response.cached is True
+    assert response.request_id > 0
+    assert llm.calls == []
+    row = stub_env[-1]
+    assert row["cached"] is True
+    assert row["chunk_ids"] == [1]
+
+
 def test_only_the_final_ranked_passages_are_sent_to_the_model(stub_env, monkeypatch):
     many = [_chunk(chunk_id=i, path=f"docs/f{i}.md") for i in range(1, 9)]
     monkeypatch.setattr(
@@ -197,5 +227,5 @@ def test_only_the_final_ranked_passages_are_sent_to_the_model(stub_env, monkeypa
     llm = _StubLLM("Answer with a citation [1].")
     answer_question(AskRequest(question="q?", slack_user_id="U7"), llm=llm)
 
-    passages = llm.calls[0][1]["content"]
+    passages = llm.calls[0][-1]["content"]
     assert passages.count("SOURCE:") == settings.top_k_final

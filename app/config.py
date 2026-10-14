@@ -2,19 +2,30 @@
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+#: `NoDecode` stops pydantic-settings from JSON-parsing these before our own
+#: validator runs, so `A=one,two` works in .env as well as `A=["one","two"]`.
+CsvList = Annotated[list[str], NoDecode]
 
 
 def _csv(value: object) -> object:
-    """Accept `a,b,c` from .env as a list."""
-    if isinstance(value, str):
-        return [item.strip() for item in value.split(",") if item.strip()]
-    return value
+    """Accept a list from the environment in either `a,b,c` or `["a","b"]` form."""
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if text.startswith("["):
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass  # fall through to the comma form
+    return [item.strip().strip("\"'") for item in text.split(",") if item.strip()]
 
 
 class Settings(BaseSettings):
@@ -24,7 +35,7 @@ class Settings(BaseSettings):
 
     # --- Source of documents ------------------------------------------------
     github_source: Literal["mock", "github"] = "mock"
-    github_repos: list[str] = []
+    github_repos: CsvList = []
     github_branch: str = "main"
     index_code: bool = False
 
@@ -40,10 +51,10 @@ class Settings(BaseSettings):
 
     # --- Models -------------------------------------------------------------
     llm_base_url: str = "http://ollama:11434/v1"
-    llm_model: str = "qwen2.5:3b-instruct"
+    llm_model: str = "qwen2.5:7b-instruct"
     llm_api_key: str = "ollama"
     llm_temperature: float = 0.0
-    llm_timeout_seconds: int = 120
+    llm_timeout_seconds: int = 900
 
     embed_provider: Literal["local", "openai"] = "local"
     embed_model: str = "BAAI/bge-small-en-v1.5"
@@ -72,7 +83,7 @@ class Settings(BaseSettings):
     # --- Slack --------------------------------------------------------------
     slack_bot_token: str = ""
     slack_app_token: str = ""
-    slack_allowed_channels: list[str] = []
+    slack_allowed_channels: CsvList = []
     escalation_channel: str = ""
     owner_hint: str = "the product owner"
     api_base_url: str = "http://api:8000"

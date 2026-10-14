@@ -33,6 +33,15 @@ def normalize_question(question: str) -> str:
     return re.sub(r"\s+", " ", question or "").strip()
 
 
+def clean_answer(text: str) -> str:
+    """Trim the wrappers small models add around the actual answer."""
+    cleaned = (text or "").strip()
+    for prefix in ("Answer:", "A:", "Assistant:"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix) :].strip()
+    return cleaned
+
+
 def is_refusal(answer: str) -> bool:
     return answer.strip().upper().startswith(NOT_IN_DOCS)
 
@@ -120,6 +129,7 @@ def answer_question(request: AskRequest, llm: LLM | None = None, use_cache: bool
                        chunks=top, top_score=best)
 
     # 8. validate: refusals and uncited answers are both "not in the docs"
+    raw = clean_answer(raw)
     if is_refusal(raw) or not valid_citations(raw, len(top)):
         log.info("model output rejected (refusal=%s citations=%s)", is_refusal(raw),
                  valid_citations(raw, len(top)))
@@ -129,12 +139,12 @@ def answer_question(request: AskRequest, llm: LLM | None = None, use_cache: bool
     response = AskResponse(
         request_id=0,  # replaced below, once we have the log row id
         answered=True,
-        answer=raw.strip(),
+        answer=raw,
         sources=build_sources(top),
         confidence=round(float(best), 4),
         docs_as_of=_docs_as_of(),
     )
-    payload = response.model_dump(exclude={"request_id"})
+    payload = response.model_dump(exclude={"request_id", "cached"})
     payload["chunk_ids"] = [c["id"] for c in top]
     store.cache_put(store.cache_key(question, version), question, version, payload)
 

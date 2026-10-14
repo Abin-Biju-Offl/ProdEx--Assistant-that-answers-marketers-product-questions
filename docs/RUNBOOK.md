@@ -98,6 +98,17 @@ question, what was said and which sources were cited. The usual causes, in order
 
 Re-baseline the numbers before and after any change so you know what the change bought.
 
+### Looking at one question in detail
+
+`eval/diagnose.py` shows retrieval and the raw model output for a handful of questions —
+which chunk ranked first, at what rerank score, and exactly what the LLM replied before
+validation. Use it whenever a failure looks like a model problem rather than a retrieval
+problem:
+
+```bash
+docker compose run --rm api python eval/diagnose.py
+```
+
 ---
 
 ## Slack bot

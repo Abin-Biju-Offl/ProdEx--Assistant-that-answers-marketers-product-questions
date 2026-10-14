@@ -41,9 +41,15 @@ def load_questions(path: Path) -> list[dict]:
 
 
 def source_hit(response, expected: str | None) -> bool | None:
+    """True when a cited source is the expected one.
+
+    Both sides are lowercased: paths are stored with their original case
+    (docs/PRODUCT_TRUTHS.md), so a case-sensitive comparison silently fails.
+    """
     if not expected:
         return None
-    return any(expected.lower() in (s.title or "") for s in response.sources)
+    needle = expected.lower()
+    return any(needle in (s.title or "").lower() for s in response.sources)
 
 
 def must_include_hit(response, needles: list[str]) -> bool:
@@ -85,9 +91,12 @@ def evaluate(questions: list[dict], verbose: bool = True) -> dict:
         hit = source_hit(response, item.get("expected_source"))
         refusal = is_refusal(response.answer)
         correct = _judge(response, item, refusal, hit)
-        # confident-wrong: we answered when we should have refused, or answered but
-        # the required facts are missing. This is the number to drive to zero.
-        confidently_wrong = (item["should_answer"] and not correct) or (
+
+        # Confident-wrong (spec 12): we ANSWERED and the answer was wrong, or we
+        # answered a question that must be refused. A refusal on an answerable
+        # question is a miss, not a confident error - counting it here would hide
+        # which of the two failure modes we actually have.
+        confidently_wrong = (response.answered and not correct) or (
             not item["should_answer"] and not refusal
         )
 
@@ -141,6 +150,8 @@ def summarise(results: list[dict]) -> dict:
         "answer_accuracy": _ratio(sum(1 for r in answerable if r["correct"]), len(answerable)),
         "correct_refusal_rate": _ratio(sum(1 for r in refusable if r["correct"]), len(refusable)),
         "confident_wrong_rate": _ratio(sum(1 for r in results if r["confidently_wrong"]), len(results)),
+        "over_refused": sum(1 for r in answerable if not r["correct"] and not r["answered"]),
+        "answered_wrong": sum(1 for r in answerable if r["answered"] and not r["correct"]),
         "retrieval_hit_rate": _ratio(sum(1 for h in hits if h), len(hits)),
         "latency_p50_ms": round(pct(latencies, 0.50)),
         "latency_p95_ms": round(pct(latencies, 0.95)),
@@ -166,6 +177,8 @@ def print_report(report: dict) -> None:
         ("Answer accuracy", f"{report['answer_accuracy']:.1%}"),
         ("Correct-refusal rate", f"{report['correct_refusal_rate']:.1%}"),
         ("Confident-wrong rate", f"{report['confident_wrong_rate']:.1%}"),
+        ("  of which answered wrong", str(report["answered_wrong"])),
+        ("  of which over-refused", str(report["over_refused"])),
         ("Retrieval hit rate", f"{report['retrieval_hit_rate']:.1%}"),
         ("Latency p50", f"{report['latency_p50_ms']} ms"),
         ("Latency p95", f"{report['latency_p95_ms']} ms"),

@@ -11,6 +11,8 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from psycopg.types.json import Jsonb
+
 from app import db
 
 log = logging.getLogger(__name__)
@@ -113,14 +115,18 @@ def cache_key(normalized_question: str, version: str) -> str:
 
 def cache_get(key: str) -> dict | None:
     row = db.query_one("SELECT payload FROM answer_cache WHERE cache_key = %s", (key,))
-    return json.loads(row["payload"]) if row else None
+    if not row:
+        return None
+    payload = row["payload"]
+    # psycopg decodes jsonb to a Python object; older drivers hand back a string.
+    return payload if isinstance(payload, dict) else json.loads(payload)
 
 
 def cache_put(key: str, question: str, version: str, payload: dict) -> None:
     db.execute(
         "INSERT INTO answer_cache (cache_key, question, docs_version, payload) "
         "VALUES (%s, %s, %s, %s) ON CONFLICT (cache_key) DO NOTHING",
-        (key, question, version, json.dumps(payload)),
+        (key, question, version, Jsonb(payload)),
     )
 
 

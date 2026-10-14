@@ -30,11 +30,13 @@ ingest-repo:  ## Ingest one repo: make ingest-repo REPO=acme/prodex-core
 eval:  ## Run the evaluation harness
 	$(COMPOSE) run --rm api python eval/run_eval.py
 
+# The runtime image ships without dev dependencies, so test and lint install them
+# into the container's virtualenv on the fly. The production image stays lean.
 test:  ## Run unit tests
-	$(COMPOSE) run --rm api pytest -q
+	$(COMPOSE) run --rm api uv run --frozen --group dev pytest -q
 
-lint:  ## Lint and format check
-	$(COMPOSE) run --rm api ruff check .
+lint:  ## Lint
+	$(COMPOSE) run --rm api uv run --frozen --group dev ruff check .
 
 shell-bash:  ## Open a shell in the API container
 	$(COMPOSE) run --rm api bash

@@ -8,14 +8,73 @@ Newest last.
 ## D1 — Default LLM is `qwen2.5:3b-instruct`, not 7B
 
 **Spec says:** default `qwen2.5:7b-instruct`.
-**Decision:** default `qwen2.5:3b-instruct`.
+**Decision:** default `qwen2.5:3b-instruct`. Switch with `LLM_MODEL` in `.env`.
 **Why:** the target machine is CPU-only (15 GB RAM, 16 threads, no GPU). A 7B model
 generates 3-5 tokens/s there, so a 5-sentence answer takes 20-30 s and misses the 5 s p95
 target by 5x. The 3B model answers in roughly 8-15 s, which is the best available on this
-hardware. `LLM_MODEL` in `.env` switches to 7B unchanged, and nothing in the code depends
-on model size.
-**Impact:** the exit criteria in section 17 are measured against 3B. Re-measure before
-shipping to hardware with a GPU.
+hardware.
+
+**Measured consequence (see D19):** 3B is fast enough but too weak to follow the citation
+rules reliably. It refuses answerable questions it has the right passage for. On this
+hardware, 3B buys speed with accuracy; that is the wrong trade for a product whose whole
+promise is "never guesses". Measure both before choosing.
+
+## D19 — The 3B model is the accuracy bottleneck, not retrieval
+
+The first full evaluation run made this unambiguous:
+
+- **Retrieval hit rate was fine.** The correct passage was ranked #1 for nearly every
+  question, at rerank scores of 0.5-0.73 against a 0.30 threshold.
+- **The model then refused anyway.** `qwen2.5:3b-instruct` returned `NOT_IN_DOCS` with a
+  passage sitting in slot [1] that answered the question outright. In one case it emitted a
+  correct cited answer *and then* prefixed it with `NOT_IN_DOCS`.
+
+Three prompt versions were tried against the same retrieval:
+
+| Version | Approach | Result |
+|---|---|---|
+| v1 | Rules only | Refused answerable questions. One case answered, then added `NOT_IN_DOCS` |
+| v2 | Two worked examples pasted into the user turn | Answered 4/4 in the spot check, but **parroted the examples back verbatim** |
+| v3 | The same two examples as real dialogue turns | No echo; 2/4 on the spot check. **Shipped** - correct behaviour matters more than the score on 4 questions |
+
+**Measured on the same four questions, same retrieval, same prompt (2026-10-14):**
+
+| Model | Answered correctly | Refused answerable | Echoed the prompt | Latency |
+|---|---|---|---|---|
+| `qwen2.5:3b-instruct` | 2 of 4 | 2 | no | ~19 s p50 |
+| `qwen2.5:7b-instruct` | 4 of 4 | 0 | no | 36-78 s |
+
+**Full evaluation, `qwen2.5:7b-instruct`, 43 questions:**
+
+| Metric | Result | Spec target |
+|---|---|---|
+| Retrieval hit rate | **97.0%** | - |
+| Answer accuracy | 60.6% | >= 85% |
+| Correct-refusal rate | 90.0% | 100% |
+| Over-refused (had the passage, said no) | 8 of 33 | - |
+| Latency p50 / p95 | 39 s / 60 s | < 5 s |
+
+**Decision: ship 7B as the default.** The 3B evaluation gave 24% accuracy with 100%
+correct-refusal - the model refuses questions it has the right passage for, which is the
+safe direction but makes the product useless.
+
+**What the numbers say.** Retrieval is not the problem: the expected source was in the top 5
+for **97%** of questions. Two things are:
+
+1. **Over-refusal (8 of 33).** The model still emits `NOT_IN_DOCS` with an answering passage
+   in slot [1]. Three prompt versions were tried (below); further prompt tuning is trading
+   clarity for luck on a 3B-to-7B model that is already slow.
+2. **One must-refuse question was answered.** That is a true confident-wrong and must be
+   driven to zero. `eval/questions.yaml` names the question in the failure list.
+
+**The honest cost:** 39 s median on this CPU. The spec's 5-second target is **not achievable
+with any local LLM on this hardware** - that is a property of the machine, not the code. The
+Slack bot's "Looking this up..." placeholder exists so a slow answer is not a broken
+experience.
+
+**To reach the exit criteria you need hardware, not more tuning:** a GPU, or a hosted model
+(`ALLOW_EXTERNAL_PROVIDERS=true` plus `LLM_BASE_URL`). A smaller model is the wrong
+direction.
 
 ## D2 — `pyproject.toml` + `uv`, with `uv.lock` as the pin
 
@@ -178,26 +237,42 @@ command for each target. No PowerShell shim is shipped.
   rather than duplicating pgvector formatting.
 - `app/slack/notify.py` — the API posts escalations, not the bot.
 - `app/models.py` gained `cached` and `access_levels` fields used by the cache and filter.
+- `eval/diagnose.py` — prints retrieval and raw model output for a few questions.
+- `eval/report_from_log.py` — re-scores the `requests` table, so metrics can be re-tuned
+  without paying for the LLM again. The eval container is thrown away with `--rm`, so its
+  JSON report goes with it; this reads the database instead.
 
 ## D18 — Verification status at handoff
 
-**What was verified:** 117 unit and wiring tests pass, `ruff check` is clean, and all 22
-modules import. The wiring test drives the real `answer_question` against stubbed
-retrieval and logging, and the real ingestion path against the fixture corpus.
+**Verified end to end in Docker** (2026-10-14):
+- Image builds; gitleaks installs and passes its SHA256 check inside the build.
+- `make ingest` on the fixture corpus: 20 documents, 0 blocked, **88 chunks indexed**.
+  Re-running ingests **0 new and skips 88 unchanged**, which is the incremental-update
+  requirement in spec 8.5 doing its job.
+- `/ask` returns a correct, cited answer with Product Truths ranked first (the truth boost
+  working), and refuses both "Enterprise price in euros" and "40% discount code" with an
+  owner hint.
+- **140 tests pass inside the container**, including the two that need Docker: the
+  Postgres-backed API tests and the gitleaks test that plants fake credentials and proves
+  the file is blocked.
+- `ruff check` clean.
 
-**What was not verified, and why:** the Docker image build and the end-to-end
-`ingest -> /ask -> eval` run. The build machine's Docker Desktop wedged part-way through
-and could not be restarted, so the image was never confirmed to build with the
-checksum-pinned gitleaks step. These are the first things to run:
+**Four real bugs were found by running it, not by testing it**, and are fixed:
+1. `pydantic-settings` JSON-parses list fields before validators run, so `GITHUB_REPOS=a,b`
+   crashed the API on boot. Fixed with `NoDecode` plus a validator that accepts both forms.
+2. psycopg returns `jsonb` as a Python dict, so `json.loads()` on the answer-cache payload
+   threw - but only on a cache **hit**, which is why it surfaced in the API tests and not
+   in the unit tests.
+3. `starlette.testclient` is incompatible with the locked httpx version. The API tests now
+   use `httpx.ASGITransport` and drive the lifespan directly, rather than pinning httpx back.
+4. The cached payload carried a `cached` key, which collided with the explicit `cached=True`
+   on a cache hit - a `TypeError` on **every** cached answer.
 
-```bash
-docker compose build api          # gitleaks installs, or the build fails here
-docker compose up -d db
-make ingest
-make test                          # includes the DB-backed API and gitleaks tests
-make eval
-```
+**A fifth bug was in the measurement itself:** `source_hit` compared a lowercased expected
+path against a title containing the original case (`docs/PRODUCT_TRUTHS.md`), so it never
+matched. It understated retrieval hit rate as 63.6% when the real figure is 97.0%, and it
+falsely failed correct answers. Worth knowing how easy it is to ship a harness that quietly
+makes the product look worse than it is.
 
-Two test files are excluded from local runs and were therefore not executed:
-`tests/test_secret_scan.py` (needs the gitleaks binary) and `tests/test_api.py`
-(needs Postgres). Both run inside the container.
+**Measured but not met:** accuracy (60.6% against 85%) and latency (39 s p50 against 5 s).
+Both are detailed in D19. Neither is fixable by more prompt tuning on this hardware.

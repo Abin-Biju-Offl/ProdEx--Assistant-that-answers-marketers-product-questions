@@ -106,9 +106,14 @@ def test_passages_are_numbered_and_carry_sources():
     assert "100 requests per minute." in rendered
 
     messages = build_messages("What is the rate limit?", chunks)
+    # system rules, then two demonstrations as real dialogue turns, then the question
     assert messages[0]["role"] == "system"
     assert messages[0]["content"] == SYSTEM_PROMPT
-    assert "What is the rate limit?" in messages[1]["content"]
+    roles = [m["role"] for m in messages]
+    assert roles == ["system", "user", "assistant", "user", "assistant", "user"]
+    assert messages[-2]["content"] == NOT_IN_DOCS, "one demonstration must be a refusal"
+    assert "What is the rate limit?" in messages[-1]["content"]
+    assert "[1] SOURCE: acme/atlas > docs/limits.md" in messages[-1]["content"]
 
 
 def test_system_prompt_covers_every_spec_rule():
@@ -126,6 +131,15 @@ def test_system_prompt_covers_every_spec_rule():
 
 def test_prompt_version_is_set():
     assert PROMPT_VERSION
+
+
+def test_model_wrappers_are_stripped_from_the_answer():
+    from app.generation.answer import clean_answer
+
+    assert clean_answer("Answer: Yes, CSV and XLSX [1].") == "Yes, CSV and XLSX [1]."
+    assert clean_answer("  A: No [2] ") == "No [2]"
+    assert clean_answer("Plain answer [1].") == "Plain answer [1]."
+    assert clean_answer("") == ""
 
 
 # --- sources -----------------------------------------------------------------

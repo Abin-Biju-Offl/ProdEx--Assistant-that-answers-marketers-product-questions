@@ -38,6 +38,10 @@ COPY app ./app
 COPY eval ./eval
 COPY fixtures ./fixtures
 COPY db ./db
+COPY tests ./tests
+# Shipped so the running container can show exactly which settings exist.
+# .env itself is never copied: secrets come from the environment.
+COPY .env.example ./.env.example
 
 # Non-root runtime user
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin prodex \

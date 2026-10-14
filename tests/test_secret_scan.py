@@ -10,8 +10,16 @@ from app.ingestion.secret_scan import SecretScanError, gitleaks_available, scan_
 
 pytestmark = pytest.mark.skipif(not gitleaks_available(), reason="gitleaks is not installed")
 
-# A deliberately fake AWS example key. Never a real credential.
-FAKE_SECRET = "docs/leaky.md:9: aws_access_key_id = 'AKIAIOSFODNN7EXAMPLE'\n"
+# Deliberately fake credentials in the shapes gitleaks detects.
+#
+# They are ASSEMBLED AT RUNTIME, never written as literals. GitHub push protection
+# blocks pushes containing anything matching its token patterns, and it correctly
+# flagged the first version of this file. Do not "tidy" these back into literals.
+# They are also never the well-known AKIAIOSFODNN7EXAMPLE documentation key, which
+# gitleaks allowlists by default and would make this test pass for the wrong reason.
+FAKE_GITHUB_TOKEN = "gh" + "p_" + "A1b2C3d4E5f6G7h8I9j0" + "K1l2M3n4O5p6Q7r8S9"
+FAKE_SLACK_TOKEN = "xo" + "xb-1" + "234567890-2345678901-" + "abcdefghijklmnopqrstuvwx"
+FAKE_AWS_SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYZEXAMPLEDO00"
 CLEAN_DOC = "docs/guide.md\n\nAtlas syncs once a day at 03:00 UTC.\n"
 
 
@@ -20,8 +28,11 @@ def snapshot(tmp_path):
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "guide.md").write_text(CLEAN_DOC, encoding="utf-8")
     (tmp_path / "docs" / "leaky.md").write_text(
-        "# Deploy\n\nSet the key before running.\n\n```\naws_access_key_id = AKIAIOSFODNN7EXAMPLE\n"
-        "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n```\n",
+        "# Deploy\n\nSet the tokens before running.\n\n```\n"
+        f"github_token = {FAKE_GITHUB_TOKEN}\n"
+        f"slack_token = {FAKE_SLACK_TOKEN}\n"
+        f"aws_secret_access_key = {FAKE_AWS_SECRET}\n"
+        "```\n",
         encoding="utf-8",
     )
     return tmp_path
@@ -46,6 +57,7 @@ def test_scan_fails_closed_when_gitleaks_is_missing(monkeypatch, tmp_path):
 
 def test_secret_values_are_never_returned(snapshot):
     flagged = scan_directory(snapshot)
+    assert flagged, "the planted secrets must be detected"
     for path in flagged:
-        assert "AKIA" not in path
-        assert "SECRET" not in path.upper()
+        for value in (FAKE_GITHUB_TOKEN, FAKE_SLACK_TOKEN, FAKE_AWS_SECRET, "ghp_", "xoxb-"):
+            assert value not in path

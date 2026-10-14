@@ -137,11 +137,20 @@ the App exists. Never use it in production.
 
 ## Status
 
-All 13 steps of the spec are implemented. **117 tests pass and lint is clean**, but the
-Docker image build and the end-to-end run were not completed - the build machine's Docker
-Desktop stopped responding. See D18 in [`docs/DECISIONS.md`](docs/DECISIONS.md) for
-exactly what to run first and what remains unverified.
+All 13 steps of the spec are implemented and **verified running in Docker**: ingestion,
+incremental re-ingest, `/ask` with citations, refusals, and **142 passing tests** including
+the Postgres-backed API tests and the gitleaks test.
 
-Two things are placeholder-grade by design and need real input before launch: the GitHub
-credentials and the Slack app (see D5). The evaluation questions are synthetic (D15), so
-the numbers currently measure the pipeline against a fictional product, not yours.
+Two spec targets are **not met on this hardware**, and both are measured, not guessed:
+
+| Target | Result |
+|---|---|
+| Answer accuracy >= 85% | 60.6% |
+| Latency p95 < 5 s | 60 s |
+
+Retrieval is not the constraint — the expected source was in the top 5 for **97%** of
+questions. The gaps are the local LLM and the CPU. See D19 in
+[`docs/DECISIONS.md`](docs/DECISIONS.md) for the measurements and the fix.
+
+Also placeholder by design and needing real input: the GitHub credentials, the Slack app,
+and 30+ real eval questions (the bundled 44 are synthetic, D15).
