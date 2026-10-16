@@ -242,6 +242,43 @@ command for each target. No PowerShell shim is shipped.
   without paying for the LLM again. The eval container is thrown away with `--rm`, so its
   JSON report goes with it; this reads the database instead.
 
+## D20 — Local vs hosted models, decided by the URL host
+
+**Spec says (14.8):** "no outbound calls with private content to third-party LLM or
+embedding services unless explicitly enabled in config".
+
+**The gap this closed:** the original implementation gated only the *embedding* provider.
+`LLM_BASE_URL` could be pointed at a hosted API and the LLM client would happily ship the
+five retrieved passages - the user's product documentation - to a third party with no
+warning. That was a real hole in a control the spec called non-negotiable, found while
+adding hosted-provider support.
+
+**Decision:** one gate, driven by the host in the URL, not by a provider flag.
+
+- `is_local_endpoint()` treats `localhost`, `127.0.0.1`, `ollama`, `vllm`,
+  `host.docker.internal` and empty as local. Everything else is remote.
+- `require_local_only()` raises unless `ALLOW_EXTERNAL_PROVIDERS=true` for a remote host.
+- It is called in `LLM.__init__` and in the embedder constructor, so a misconfiguration
+  fails **at startup**, before any document is sent.
+
+**Why host-based rather than a flag:** with a separate `LLM_PROVIDER=external` flag, the
+realistic failure is someone changing the URL and forgetting the flag. Deciding from the
+URL means the dangerous case - new host, old flag - fails closed by construction. Verified
+in `tests/test_provider_gate.py` and against the live container.
+
+**One switch, many providers.** Everything speaks the OpenAI-compatible `/v1` API, so
+Grok (`https://api.x.ai/v1`), NVIDIA NIM (`https://integrate.api.nvidia.com/v1`), OpenAI,
+vLLM and LM Studio are all the same setting. `.env.example` carries a ready-made block for
+each.
+
+**The reranker stays local, deliberately.** A cross-encoder is not an OpenAI-compatible
+API, the model is 1.1 GB, and it costs about two seconds. Adding a Cohere-style client for
+that is not worth it. Documented rather than left as an oversight.
+
+**Cost of going hosted:** retrieval quality drops, because `TOP_K_FINAL` passages are sent
+verbatim. Expect 2-5s answers instead of 40-200s. That is the only way to hit the spec's
+5-second target without a GPU.
+
 ## D18 — Verification status at handoff
 
 **Verified end to end in Docker** (2026-10-14):

@@ -135,6 +135,30 @@ the App exists. Never use it in production.
    `im:history`, `users:read`, enable Socket Mode, and set `SLACK_ALLOWED_CHANNELS`.
 5. Work through the security checklist at the end of [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
+## Choosing local or hosted models
+
+Everything speaks the OpenAI-compatible `/v1` API, so switching between local Ollama, vLLM,
+Grok, NVIDIA NIM and OpenAI is three lines in `.env`:
+
+```ini
+# local - nothing leaves the machine
+LLM_BASE_URL=http://ollama:11434/v1
+LLM_MODEL=qwen2.5:3b-instruct
+
+# hosted - 2-5s answers instead of 40-200s
+ALLOW_EXTERNAL_PROVIDERS=true
+LLM_BASE_URL=https://api.x.ai/v1
+LLM_MODEL=grok-2-latest
+LLM_API_KEY=...
+```
+
+Whether a request leaves the machine is decided from the **host in the URL**, not from a
+flag. Point `LLM_BASE_URL` at a remote host without `ALLOW_EXTERNAL_PROVIDERS=true` and the
+app refuses to start — you cannot accidentally ship your documentation to a third party.
+A local vLLM still counts as local and needs no opt-in.
+
+See [Choosing a model](docs/RUNBOOK.md#choosing-a-model) for the accuracy/latency table.
+
 ## Status
 
 All 13 steps of the spec are implemented and **verified running in Docker**: ingestion,

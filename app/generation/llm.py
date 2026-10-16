@@ -26,11 +26,14 @@ class LLMUnavailable(RuntimeError):
 
 class LLM:
     def __init__(self, cfg: Settings) -> None:
+        # Fail closed before any request: a hosted endpoint needs an explicit opt-in.
+        cfg.require_local_only("LLM_BASE_URL", cfg.llm_base_url)
         self.base_url = cfg.llm_base_url.rstrip("/")
         self.model = cfg.llm_model
         self.api_key = cfg.llm_api_key
         self.temperature = cfg.llm_temperature
         self.timeout = cfg.llm_timeout_seconds
+        self.is_local = cfg.llm_is_local()
         self._client = httpx.Client(timeout=self.timeout)
 
     @property

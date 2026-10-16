@@ -157,6 +157,68 @@ If Metabase cannot connect, `METABASE_DB_PASSWORD` in `.env` must match the pass
 
 ---
 
+## Choosing a model
+
+The whole stack speaks the OpenAI-compatible `/v1` API, so every provider is the same
+three settings.
+
+**Local (default, nothing leaves the machine):**
+
+```ini
+ALLOW_EXTERNAL_PROVIDERS=false
+LLM_BASE_URL=http://ollama:11434/v1
+LLM_MODEL=qwen2.5:3b-instruct
+```
+
+**Hosted — faster, but your product docs leave the machine:**
+
+```ini
+ALLOW_EXTERNAL_PROVIDERS=true          # must be set, or the app refuses to start
+LLM_BASE_URL=https://api.x.ai/v1       # or api.openai.com/v1, integrate.api.nvidia.com/v1
+LLM_MODEL=grok-2-latest               # or gpt-4o-mini, meta/llama-3.3-70b-instruct
+LLM_API_KEY=...
+```
+
+Apply it:
+
+```powershell
+docker compose up -d --force-recreate api
+```
+
+> No rebuild is needed. These are environment variables, read at startup.
+
+**A local vLLM or LM Studio counts as local** — no opt-in required, because the URL host is
+on this machine or the compose network.
+
+### Which should you use?
+
+| | Accuracy | Speed | Docs leave the machine |
+|---|---|---|---|
+| Local 3B | poor - refuses answerable questions | 30-80s | no |
+| Local 7B | good | 40-200s | no |
+| Hosted | good | 2-5s | **yes** |
+
+On CPU-only hardware there is no local option that is both fast and accurate. Hosted is the
+only way to reach the 5-second target. See DECISIONS.md D19 and D20.
+
+### Verify which one is active
+
+```powershell
+docker compose exec api python -c "from app.config import settings; print(settings.llm_model, '| local:', settings.llm_is_local())"
+```
+
+### If the app refuses to start
+
+```
+RuntimeError: LLM_BASE_URL is pointed at 'https://api.x.ai/v1', which is not this machine.
+That sends product documentation to a third party. Set ALLOW_EXTERNAL_PROVIDERS=true ...
+```
+
+That is the gate working. Either set the switch deliberately, or point the URL back at
+Ollama.
+
+---
+
 ## Housekeeping
 
 ### Retention

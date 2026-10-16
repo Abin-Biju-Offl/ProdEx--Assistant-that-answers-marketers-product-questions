@@ -53,11 +53,18 @@ class LocalEmbedder:
         return self.embed_documents([text])[0]
 
 
-class OpenAIEmbedder:
-    """Only reachable when ALLOW_EXTERNAL_PROVIDERS=true (spec section 14.8)."""
+class OpenAICompatibleEmbedder:
+    """Any OpenAI-compatible /embeddings endpoint.
+
+    Covers OpenAI, Azure OpenAI, Voyage, NVIDIA NIM and local vLLM/LM Studio.
+    Refused unless ALLOW_EXTERNAL_PROVIDERS=true and the host is not local
+    (spec section 14.8).
+    """
+
+    name = "openai_compatible"
 
     def __init__(self, cfg: Settings) -> None:
-        self.name = "openai"
+        cfg.require_local_only("EMBED_BASE_URL", cfg.embed_base_url)
         self.model = cfg.embed_model
         self.base_url = cfg.embed_base_url.rstrip("/")
         self.api_key = cfg.embed_api_key
@@ -86,17 +93,16 @@ class OpenAIEmbedder:
 
 def get_embedder(cfg: Settings | None = None) -> Embedder:
     cfg = cfg or settings
-    key = f"{cfg.embed_provider}:{cfg.embed_model}"
+    key = f"{cfg.embed_provider}:{cfg.embed_model}:{cfg.embed_base_url}"
     if key in _instances:
         return _instances[key]
     with _lock:
         if key in _instances:
             return _instances[key]
-        cfg.external_providers_allowed(cfg.embed_provider)
         if cfg.embed_provider == "local":
             embedder: Embedder = LocalEmbedder(cfg.embed_model, cfg.embed_dim)
-        elif cfg.embed_provider == "openai":
-            embedder = OpenAIEmbedder(cfg)
+        elif cfg.embed_provider == "openai_compatible":
+            embedder = OpenAICompatibleEmbedder(cfg)
         else:  # pragma: no cover - pydantic restricts the choices
             raise ValueError(f"unknown EMBED_PROVIDER {cfg.embed_provider!r}")
         _instances[key] = embedder

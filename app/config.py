@@ -6,6 +6,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -13,6 +14,28 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 #: `NoDecode` stops pydantic-settings from JSON-parsing these before our own
 #: validator runs, so `A=one,two` works in .env as well as `A=["one","two"]`.
 CsvList = Annotated[list[str], NoDecode]
+
+
+#: Hosts that mean "this machine". Anything else is a third party.
+LOCAL_HOSTS = {
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "::1",
+    "ollama",
+    "host.docker.internal",
+    "vllm",
+    "",
+}
+
+
+def is_local_endpoint(url: str) -> bool:
+    """True when a base URL points at this machine or the compose network."""
+    try:
+        host = (urlsplit(url or "").hostname or "").lower()
+    except ValueError:
+        return False
+    return host in LOCAL_HOSTS
 
 
 def _csv(value: object) -> object:
@@ -50,15 +73,18 @@ class Settings(BaseSettings):
     metabase_db_url: str = "postgresql://metabase_ro:change_me@db:5432/prodex"
 
     # --- Models -------------------------------------------------------------
+    # Any OpenAI-compatible /v1 endpoint works: Ollama, vLLM, LM Studio, Grok
+    # (https://api.x.ai/v1), NVIDIA NIM (https://integrate.api.nvidia.com/v1), OpenAI.
+    # Whether it is local is decided from the host, not from a flag.
     llm_base_url: str = "http://ollama:11434/v1"
-    llm_model: str = "qwen2.5:7b-instruct"
+    llm_model: str = "qwen2.5:3b-instruct"
     llm_api_key: str = "ollama"
     llm_temperature: float = 0.0
-    llm_timeout_seconds: int = 900
+    llm_timeout_seconds: int = 300
 
-    embed_provider: Literal["local", "openai"] = "local"
+    embed_provider: Literal["local", "openai_compatible"] = "local"
     embed_model: str = "BAAI/bge-small-en-v1.5"
-    embed_base_url: str = "https://api.openai.com/v1"
+    embed_base_url: str = ""
     embed_api_key: str = ""
     embed_dim: int = 384
 
@@ -105,16 +131,34 @@ class Settings(BaseSettings):
     def github_credentials_present(self) -> bool:
         return bool(self.github_app_id and self.github_app_installation_id)
 
-    def external_providers_allowed(self, provider: str) -> bool:
-        """Fail closed: no private content leaves the network unless opted in."""
-        if provider in ("local", "none"):
-            return True
+    # --- external provider gate (spec section 14.8) -------------------------
+
+    def require_local_only(self, what: str, endpoint: str) -> None:
+        """Fail closed: product content never leaves the machine unless opted in.
+
+        Decided from the URL rather than a separate provider flag, so repointing
+        LLM_BASE_URL at a hosted service without flipping the switch refuses to
+        start rather than silently shipping the index to a third party.
+        """
+        if is_local_endpoint(endpoint):
+            return
         if not self.allow_external_providers:
             raise RuntimeError(
-                f"Provider {provider!r} sends product content to a third party, but "
-                "ALLOW_EXTERNAL_PROVIDERS=false (spec section 14.8)."
+                f"{what} is pointed at {endpoint!r}, which is not this machine. That "
+                "sends product documentation to a third party. Set "
+                "ALLOW_EXTERNAL_PROVIDERS=true to allow it deliberately "
+                "(spec section 14.8), or point it back at a local endpoint."
             )
+
+    def external_providers_allowed(self, provider: str, endpoint: str | None = None) -> bool:
+        """Back-compat wrapper used by the embedding and reranking providers."""
+        if provider in ("local", "none"):
+            return True
+        self.require_local_only(f"provider {provider!r}", endpoint or "")
         return True
+
+    def llm_is_local(self) -> bool:
+        return is_local_endpoint(self.llm_base_url)
 
 
 @lru_cache

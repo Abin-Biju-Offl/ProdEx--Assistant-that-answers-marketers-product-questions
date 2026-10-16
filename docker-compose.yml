@@ -45,6 +45,7 @@ services:
 
   api:
     build: .
+    image: prodex:local
     depends_on:
       db:
         condition: service_healthy
@@ -68,7 +69,8 @@ services:
   # Slack bot (Socket Mode, no public URL needed). Start with:
   #   docker compose --profile slack up -d slack
   slack:
-    build: .
+    # Same image as api - deliberately no `build:` here so the image is built once.
+    image: prodex:local
     profiles: [slack]
     depends_on:
       api:
@@ -85,6 +87,7 @@ services:
     volumes:
       - modelcache:/models
       - ./secrets:/app/secrets:ro
+    command: ["python", "-m", "app.slack.bot"]
     restart: unless-stopped
 
   # One-shot jobs share the api image, e.g.
